@@ -1,0 +1,9 @@
+# Pull requests touching these paths need a review from a code owner, once "Require
+# review from Code Owners" is turned on for main (see the README). GitHub doesn't let
+# people approve their own pull requests, so add at least one more person or a team
+# (e.g. @rodlibrary/digital-collections) before turning that on.
+/manifest/          @dwhartwig2
+/apache/            @dwhartwig2
+/deploy/            @dwhartwig2
+/settings.env       @dwhartwig2
+/.github/           @dwhartwig2

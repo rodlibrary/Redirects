@@ -10,20 +10,20 @@ from Apache httpd.
 ```
 Digital Commons (OAI-PMH) ──harvest_dc.py──▶ staging/dc_items.csv
                                                    │
-Preservica Entity API ─────match_preservica.py─────┘   (manual GitLab job: refresh_manifest)
+Preservica Entity API ─────match_preservica.py─────┘   (manual workflow: Refresh manifest)
                                                    ▼
-                     manifest/redirects.csv (+ overrides.csv)   ◀── edits via merge request
+                     manifest/redirects.csv (+ overrides.csv)   ◀── edits via pull request
                                                    │
-                       GitLab CI: validate → build_maps → apache_test (+ secret_detection)
+                   GitHub Actions: validate → build_maps → apache_test (+ secret_scan)
                                                    ▼
-                     artifact: maps/*.txt, stats.json, smoke_test.tsv
+                     release "maps": redirect-maps.zip (maps/*.txt, stats.json, smoke_test.tsv)
                                                    │  pulled every 15 min by each server
                               ┌────────────────────┴────────────────────┐
                               ▼                                         ▼
    scholarworks.uni.edu: redirects.conf + ark.conf      library.uni.edu: ark.conf only
    (old ScholarWorks URLs and ARKs)                      (ARKs, as registered for NAAN 32498)
 
-   Weekly scheduled pipeline: check_targets → target_failures.csv
+   Weekly scheduled workflow: check_targets → target_failures.csv
 ```
 
 ## What gets redirected
@@ -60,21 +60,21 @@ Checked against the live sites on 2026-10-13:
 * **ARKs:** NAAN 32498, registered to Rod Library. The ARK Alliance registry forwards
   `n2t.net/ark:/32498/...` and `arks.org/ark:/32498/...` to
   `https://library.uni.edu/ark:/32498/...` (302).
-* **GitLab:** project `rod-library/redirects` on `https://git.uni.edu`
-  (project ID 2499).
+* **GitHub:** private repository `rodlibrary/redirects`, moved from the GitLab project
+  `rod-library/redirects` on `git.uni.edu` on 2026-10-30 (see "Moving from GitLab").
 * **Two numbers per item:** e.g. `/facsenate_documents/221` downloads as
   `viewcontent.cgi?article=1221&context=facsenate_documents`. Both are mapped.
 * **Journals** (`pias`, `jias`, `istj`, `ukl`, `ijc`, `universitas`, `mtie`, `ptoj`,
   `ijgh`, `journal-stem-arts` and others) use `/journal/volN/issN/N` article URLs.
 * **Names with hyphens** exist (`journal-stem-arts`), including inside OAI identifiers.
 
-These values live in `.gitlab-ci.yml` (`variables:`), the `deploy/pull.env*.example`
-files and the Apache configuration examples.
+These values live in `settings.env` (read by every workflow), the
+`deploy/pull.env*.example` files and the Apache configuration examples.
 
 ### Still to confirm
 
 * **Preservica link format.** Links are built from `PRESERVICA_TARGET_TEMPLATE` in
-  `.gitlab-ci.yml`, currently `https://{access_host}/portal/en-US/{kind}/{sdb}`, which
+  `settings.env`, currently `https://{access_host}/portal/en-US/{kind}/{sdb}`, which
   gives `https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C<uuid>`
   (Folders: `.../folder/sdb%3ASO%7C<uuid>`). Open one Asset and one Folder in the
   portal, compare their full addresses, and adjust the template before the first full
@@ -98,7 +98,7 @@ at a Preservica Folder; `redirects_miss.log` shows which ones people actually us
 
 The ARK Alliance registry sends `ark:/32498/...` requests to `library.uni.edu`, so
 that site's Apache resolves them directly: it includes `apache/ark.conf` and keeps its
-own copy of the maps, pulled from GitLab exactly like the redirect server's. Readers
+own copy of the maps, pulled from GitHub exactly like the redirect server's. Readers
 get one redirect, straight to Preservica, and ARK resolution doesn't depend on the
 ScholarWorks redirect server staying up. `apache/library-vhost-example.conf` has the
 lines to add and the setup steps; `deploy/pull.env.library.example` is that server's
@@ -113,14 +113,17 @@ copy of the maps serves both.
 ## Repository layout
 
 ```
-.gitlab-ci.yml              pipeline: checks on every push, manual refresh, weekly link check
-CODEOWNERS                  merge requests need approval from @rod-library
+settings.env                hosts, NAAN, tenant and link template used by every workflow
+.github/workflows/checks.yml          validate, build, Apache test, secret scan; publishes the maps
+.github/workflows/refresh-manifest.yml  manual: rebuild the manifest and open a pull request
+.github/workflows/check-targets.yml   weekly check that Preservica targets still resolve
+.github/CODEOWNERS          who reviews changes to the manifest, Apache and deploy files
 manifest/redirects.csv      the generated manifest (one row per item or collection)
 manifest/overrides.csv      hand corrections; any key here replaces the same key above
 staging/                    harvest snapshot and unmatched report (commit dc_items.csv!)
 scripts/harvest_dc.py       OAI-PMH harvest of Digital Commons identifiers
 scripts/match_preservica.py look up Preservica entities and write the manifest
-scripts/validate.py         manifest checks (run in CI on every push)
+scripts/validate.py         manifest checks (run on every pull request and push)
 scripts/build_maps.py       manifest → Apache map files + smoke-test sample
 scripts/check_redirects.py  send requests to Apache and check status/Location
 scripts/check_targets.py    scheduled check that Preservica targets still resolve
@@ -174,7 +177,7 @@ store them as type `ark`. Add these during ingest (an OPEX manifest or a pyPrese
 script can do it). Different names can be set with `--id-type`, `--id-template`,
 `--series-id-type` and `--ark-id-type`.
 
-Ask your Preservica administrator for a **service account** for the pipeline:
+Ask your Preservica administrator for a **service account** for the workflows:
 **Read Metadata** on the security tags of everything migrated from ScholarWorks, no
 edit or ingest rights, a Preservica password of its own (not a university single
 sign-on login), and **no two-factor sign-in** (the scripts log in with a user name and
@@ -184,9 +187,9 @@ password only). API access depends on the licensed Preservica edition.
 read the metadata of, so lookups come back empty rather than failing; the matching
 scripts stop with an explanation if the account can't see any records. To check the
 account, sign in to Preservica in a browser as it and browse or search: what it sees
-there is what the pipeline will see.
+there is what the workflows will see.
 
-Check the login from PowerShell before using it in GitLab (replace the host with the
+Check the login from PowerShell before using it in GitHub (replace the host with the
 server staff sign in to for Preservica's management screens, not the public portal):
 
 ```powershell
@@ -210,8 +213,8 @@ Finally, confirm the link format (see "Still to confirm" above).
 
 ### 2. Harvest Digital Commons while it is still live
 
-Run the `refresh_manifest` job (step 4 below), which harvests and then matches, or
-harvest by hand:
+Run the **Refresh manifest** workflow (step 4 below), which harvests and then matches,
+or harvest by hand:
 
 ```bash
 python3 scripts/harvest_dc.py --base-url https://scholarworks.uni.edu/do/oai/ \
@@ -223,82 +226,112 @@ git add staging/dc_items.csv && git commit -m "Snapshot of Digital Commons ident
 record of the old URLs. Spot-check rows where `article_source` is `oai_id`: those
 article numbers came from the OAI identifier, not from a file URL.
 
-### 3. Configure GitLab
+### 3. Configure GitHub
 
-You need the Maintainer role on the project.
+You need the Admin role on the repository (Settings is only visible to admins).
 
-**CI/CD variables** (Settings → CI/CD → Variables → Add variable). Only the Preservica
-login goes here; every other setting, including `PRESERVICA_TENANT` (`UNIOWA`), is
-already in `.gitlab-ci.yml`. Don't repeat those in Settings, because a Settings
-variable silently overrides the file.
+**Repository secrets** (Settings → Secrets and variables → Actions → **Secrets** tab →
+New repository secret). Only the Preservica login goes here; every other setting,
+including the host and the tenant `UNIOWA`, is in `settings.env`.
 
-| Key | Value | Visibility | Protect | Expand variable reference |
-|---|---|---|---|---|
-| `PRESERVICA_HOST` | server staff sign in to, hostname only (e.g. `us.preservica.com`); not `uni.access.preservica.com` | Visible | ✔ | Clear |
-| `PRESERVICA_USER` | the service account's user name | Visible | ✔ | Clear |
-| `PRESERVICA_PASSWORD` | the service account's password | Masked (or Masked and hidden) | ✔ | **Clear** |
+| Name | Value |
+|---|---|
+| `PRESERVICA_USER` | the service account's user name |
+| `PRESERVICA_PASSWORD` | the service account's password |
 
-*Protect* limits the values to pipelines on protected branches (`main`), so a merge
-request can't read them. Clearing *Expand variable reference* stops GitLab from
-treating a `$` in the password as a variable. GitLab only masks values of 8 or more
-characters with no spaces.
+Add them on the **Secrets** tab as *repository* secrets: not on the Variables tab, and
+not as environment secrets, which the workflows can't see. GitHub hides secret values
+in logs, and nobody can read them back once saved. Anyone who can push a branch to this
+repository could write a workflow that uses them, so keep write access to trusted staff.
 
-**Branch protection and approvals.** Keep `main` protected (Settings → Repository →
-Protected branches) and allow changes only through merge requests. Code owner approval,
-turned on for the protected branch, makes the `@rod-library` group named in
-`CODEOWNERS` approve changes; it needs GitLab Premium or Ultimate.
+**Let the refresh open pull requests.** Settings → Actions → General → Workflow
+permissions: tick **Allow GitHub Actions to create and approve pull requests**, then
+Save. (If the box is greyed out, an organization owner has to allow it first under the
+organization's Settings → Actions → General.) Without it, the refresh workflow still
+pushes its branch and prints a link for opening the pull request by hand.
 
-**Secret Detection.** GitLab's Secret Detection job flags tokens or passwords
-committed by mistake. Keep these lines at the end of `.gitlab-ci.yml`:
+**Protect `main`.** Settings → Rules → Rulesets → New ruleset → New branch ruleset:
 
-```yaml
-include:
-  - template: Security/Secret-Detection.gitlab-ci.yml
-```
+| Setting | Value |
+|---|---|
+| Ruleset name | `main` |
+| Enforcement status | Active |
+| Target branches | Add target → Include default branch |
+| Require a pull request before merging | ✔ (Required approvals: 1 once a second reviewer is in `CODEOWNERS`) |
+| Require status checks to pass | ✔, add `validate`, `build_maps`, `apache_test`, `secret_scan` |
+| Block force pushes | ✔ |
 
-**Access token for the servers.** Settings → Access tokens: create a project access
-token with the **Reporter** role and **read_api** scope. Each server's `pull.env` uses
-it to download the built maps; give each server its own token so either can be revoked
-on its own.
+Rulesets and code owner review on private repositories need a paid GitHub plan (Team or
+Enterprise). On the Free plan the Rules page won't save them: merge only pull requests
+whose checks have passed, which is also what keeps bad maps off the servers, since
+maps are only published after every check passes on `main`. GitHub doesn't let people
+approve their own pull requests, so add a second person or a team to
+`.github/CODEOWNERS` before requiring approvals.
 
-**Weekly link check.** Build → Pipeline schedules → New schedule:
+**Secret scanning.** The `secret_scan` check runs [gitleaks](https://github.com/gitleaks/gitleaks)
+over every commit and fails if it finds a password or token committed by mistake.
+(GitHub's own secret scanning is a paid add-on for private repositories.) If it ever
+flags something real, change that password or revoke the token straight away: removing
+it from the files doesn't remove it from the history.
+
+**Token for the servers.** Each server downloads the maps with its own read-only token.
+While signed in to GitHub: your profile picture → Settings → Developer settings →
+Personal access tokens → **Fine-grained tokens** → Generate new token:
 
 | Field | Value |
 |---|---|
-| Description | `Weekly check of Preservica redirect targets` |
-| Interval pattern | Custom: `0 6 * * 1` (Mondays at 6:00) |
-| Cron timezone | `[UTC-6] Central Time (US & Canada)` |
-| Target branch | `main` |
-| Variables | none |
+| Token name | e.g. `redirects pull: scholarworks.uni.edu` |
+| Resource owner | `rodlibrary` |
+| Expiration | the longest the organization allows; put the date in your calendar |
+| Repository access | Only select repositories → `rodlibrary/redirects` |
+| Permissions | Repository permissions → **Contents: Read-only** (Metadata: Read-only is added automatically) |
 
-Run it once from the schedules list (play button) to test it. A scheduled pipeline runs
-only `check_targets` (plus `secret_detection`, if included). The schedule runs as its owner; if the
-owner leaves the project, someone else must take it over, or it stops.
+Copy the token (it starts `github_pat_`) into that server's `pull.env` as
+`GITHUB_TOKEN`. Make a second token for library.uni.edu, so either can be revoked on
+its own. The organization may need to approve fine-grained tokens before they work. A
+personal token stops working if its owner leaves the organization; replace it before
+that happens.
+
+**Weekly link check.** Nothing to set up: `.github/workflows/check-targets.yml` runs
+every Monday at 11:17 UTC (6:17 am Central in summer, 5:17 am in winter). Run it once
+by hand to test it: Actions → Check redirect targets → Run workflow. When targets fail,
+the run is marked failed and GitHub emails whoever last edited the schedule line, and
+the run's **target-failures** artifact lists them. Private repositories use the
+organization's GitHub Actions minutes (2,000 a month on the Free plan); with
+`--pause 0.5`, checking a few thousand targets takes well under an hour.
 
 ### 4. Build the manifest
 
-In GitLab: Build → Pipelines → the latest pipeline on `main` → play button on
-**`refresh_manifest`**. It harvests ScholarWorks, looks up each item in Preservica, and
-offers `manifest/redirects.csv` and `staging/` as job artifacts. Download them, review
-`manifest/redirects.csv` and `staging/unmatched.csv`, then commit
-`manifest/redirects.csv` and `staging/dc_items.csv` through a merge request.
+In GitHub: Actions → **Refresh manifest** → Run workflow, with *method* `identifiers`.
+It harvests ScholarWorks, looks up each item in Preservica, and opens a pull request
+with the new `manifest/redirects.csv` and `staging/dc_items.csv`, then runs the checks
+on it. Review the changes in the pull request, and the items that couldn't be matched
+in `staging/unmatched.csv` in the run's artifact (linked from the pull request). Merge
+when it looks right.
 
 Rerun it as more content is ingested; rows already resolved are carried forward
 without new API calls, and their links are rebuilt with the current
-`PRESERVICA_TARGET_TEMPLATE`. After Digital Commons is switched off, run the job with
-the variable `SKIP_HARVEST=1` to re-match the committed `staging/dc_items.csv`.
+`PRESERVICA_TARGET_TEMPLATE`. After Digital Commons is switched off, tick **Reuse the
+committed staging/dc_items.csv** when running it, to re-match the last harvest.
 
-**Matching by Preservica reference instead.** If the assets don't carry `dc_article`
-identifiers, fill in references by hand: open `manifest/redirects.csv` from a
-`refresh_manifest` run (it lists every ScholarWorks item), paste each item's
-Preservica reference into the `preservica_ref` column, and leave `target_url` and
-`status` as they are. Save as **CSV UTF-8** if you use Excel. Commit it through a merge
-request: the pipeline validates the references, builds the links and tests them, and
-no Preservica login is involved. Rows still without a reference stay unmatched, and
-later `refresh_manifest` runs keep every reference you entered.
+**Matching by title.** If the Assets don't carry `dc_article` identifiers, run it with
+*method* `titles`. It lists Preservica (or only the Folder given in *root folder*),
+matches ScholarWorks titles to Asset titles, and puts candidates for anything uncertain
+in `staging/title_match_review.csv` in the artifact. References already in the
+manifest, including hand-entered ones, are kept.
 
-The GitLab runner needs network access to `scholarworks.uni.edu` and to your
-Preservica host. To run the same steps by hand instead:
+**Matching by Preservica reference instead.** Fill in references by hand: open
+`manifest/redirects.csv` from a refresh run (it lists every ScholarWorks item), paste
+each item's Preservica reference into the `preservica_ref` column, and leave
+`target_url` and `status` as they are. Save as **CSV UTF-8** if you use Excel. Commit
+it through a pull request: the checks validate the references, build the links and test
+them, and no Preservica login is involved. Rows still without a reference stay
+unmatched, and later refresh runs keep every reference you entered.
+
+The workflows run on GitHub's servers, which reach `scholarworks.uni.edu` and
+`us.preservica.com` over the internet. If either site starts limiting which addresses
+may connect, the harvest or the Preservica login will fail there. To run the same
+steps by hand instead:
 
 ```bash
 export PRESERVICA_HOST=us.preservica.com PRESERVICA_TENANT=UNIOWA PRESERVICA_USER=... PRESERVICA_PASSWORD=...
@@ -322,7 +355,7 @@ sudo mkdir -p /etc/httpd/redirects /opt/dc-redirects /etc/dc-redirects
 sudo cp apache/redirects.conf apache/ark.conf /etc/httpd/redirects/
 sudo cp -r apache/www /etc/httpd/redirects/www
 sudo install -m 755 deploy/pull_maps.sh /opt/dc-redirects/
-sudo install -m 600 deploy/pull.env.example /etc/dc-redirects/pull.env   # then add the token
+sudo install -m 600 deploy/pull.env.example /etc/dc-redirects/pull.env   # then add the GitHub token
 sudo cp deploy/dc-redirects-pull.{service,timer} /etc/systemd/system/
 
 # First install: Apache won't start until the map files exist, so skip the smoke test once.
@@ -341,6 +374,12 @@ second copy of the maps.
 The Apache user must be able to read everything under `/etc/httpd/redirects`,
 including each parent directory.
 
+The first `pull_maps.sh` run needs the maps to exist on GitHub: the **maps** release
+appears after the first successful run of the Checks workflow on `main` (Code → Releases).
+The servers need outbound HTTPS to `api.github.com` and to GitHub's file storage
+(`objects.githubusercontent.com` and `release-assets.githubusercontent.com`); if they
+sit behind a firewall that limits outbound traffic, ask for those to be allowed.
+
 Before changing DNS, test the redirect server directly:
 
 ```bash
@@ -358,9 +397,9 @@ python3 scripts/check_redirects.py maps/smoke_test.tsv --server https://<server-
 ## Day-to-day changes
 
 1. Edit `manifest/overrides.csv` (or regenerate `redirects.csv`) on a branch.
-2. Open a merge request. CI validates, builds and tests in a real Apache.
-3. Merge. Within 15 minutes each server pulls the new maps; Apache picks them up
-   without a reload.
+2. Open a pull request. The checks validate, build and test in a real Apache.
+3. Merge once the checks pass. The maps are republished, and within 15 minutes each
+   server pulls them; Apache picks them up without a reload.
 
 To fix one bad redirect, add a row to `overrides.csv` with just the key(s) that need
 to change and the new, percent-encoded target.
@@ -369,8 +408,8 @@ to change and the new, percent-encoded target.
 
 * **Set once per copy of the repository:** `git config core.filemode false`. Windows
   doesn't store the "executable" flag, so without this setting Git reports every
-  script as modified. Never commit those mode changes: the pipeline runs the scripts
-  directly and fails with "Permission denied" if they lose the flag.
+  script as modified. Never commit those mode changes: the servers run
+  `pull_maps.sh` directly and fail with "Permission denied" if it loses the flag.
 * Git for Windows' default line-ending handling (`core.autocrlf=true`) is fine.
 * Applying a patch file: put it outside the repository folder, then
   `git am C:\path\to\file.patch`. If a `git am` stops partway, run `git am --abort`
@@ -402,11 +441,31 @@ test suite fails if the flag is removed.
   request answered with 404 or 410, with its referrer. Check it regularly: frequent
   404s show items or pages the manifest is missing, which can be added to
   `overrides.csv`.
-* **Broken targets:** the weekly `check_targets` pipeline writes `target_failures.csv`
-  as a job artifact, listing redirect targets that no longer resolve in Preservica and
+* **Broken targets:** the weekly **Check redirect targets** workflow saves
+  `target_failures.csv` as the run's **target-failures** artifact, listing redirect targets that no longer resolve in Preservica and
   the manifest row each came from.
 * **Deploys:** `journalctl -u dc-redirects-pull.service` on each server shows every
   pull, any update refused by the shrink guard, and any automatic rollback after a
   failed smoke test.
 * **ARK use:** the optional `ark_access.log` in `library-vhost-example.conf` shows which
   ARKs are being cited.
+
+## Moving from GitLab
+
+This repository replaced the GitLab project `rod-library/redirects` on `git.uni.edu`
+(project ID 2499) on 2026-10-30. The code is the same apart from what GitLab did:
+
+| GitLab | GitHub |
+|---|---|
+| `.gitlab-ci.yml` `variables:` | `settings.env` |
+| CI/CD variables `PRESERVICA_HOST`, `PRESERVICA_USER`, `PRESERVICA_PASSWORD` | repository secrets `PRESERVICA_USER`, `PRESERVICA_PASSWORD` (the host is in `settings.env`) |
+| jobs `validate`, `build_maps`, `apache_test`, Secret Detection | the **Checks** workflow (`secret_scan` uses gitleaks) |
+| `build_maps` artifact, downloaded with a project access token | `redirect-maps.zip` on the **maps** release, downloaded with a fine-grained token |
+| manual jobs `refresh_manifest`, `match_by_title` | the **Refresh manifest** workflow, *method* `identifiers` or `titles`; it opens the pull request itself |
+| pipeline schedule for `check_targets` | `check-targets.yml`, scheduled in the file |
+| protected branch, code owner approval | ruleset on `main`, `.github/CODEOWNERS` |
+
+The servers hadn't been set up to pull from GitLab yet, so they need nothing extra:
+follow step 5 with the GitHub settings. Once this repository works, archive the GitLab
+project (Settings → General → Advanced → Archive project) so nobody edits the old copy,
+and delete its CI/CD variables and access tokens.

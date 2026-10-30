@@ -17,7 +17,7 @@ Credentials come from environment variables, never the command line:
     PRESERVICA_HOST       the Preservica server you sign in to, e.g. us.preservica.com
     PRESERVICA_USER       a Preservica user name (a read-only service account)
     PRESERVICA_PASSWORD
-    PRESERVICA_TENANT     the tenant code; Rod Library's is UNIOWA (set in .gitlab-ci.yml).
+    PRESERVICA_TENANT     the tenant code; Rod Library's is UNIOWA (set in settings.env).
                           Some single-tenant systems accept a login without it.
 
 The account needs Read Metadata on the security tags of the migrated records.

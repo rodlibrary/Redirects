@@ -3,7 +3,7 @@
 # Run once by hand:   systemctl start dc-redirects-pull.service
 # See results:        journalctl -u dc-redirects-pull.service
 [Unit]
-Description=Pull Digital Commons redirect maps from GitLab
+Description=Pull Digital Commons redirect maps from GitHub
 Wants=network-online.target
 After=network-online.target
 

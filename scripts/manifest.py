@@ -55,7 +55,7 @@ PRESERVICA_REF_RE = re.compile(
 
 
 # Where redirect links point. Overridden by the same-named environment variables,
-# which .gitlab-ci.yml sets for every job.
+# which the GitHub workflows set for every job from settings.env.
 DEFAULT_ACCESS_HOST = "uni.access.preservica.com"
 DEFAULT_TARGET_TEMPLATE = "https://{access_host}/portal/en-US/{kind}/{sdb}"
 

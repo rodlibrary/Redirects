@@ -2,9 +2,9 @@
 """Check that every active redirect target in the manifest still resolves.
 
 Sends a HEAD request (falling back to GET if HEAD is refused) to each unique
-target_url, slowly, and writes failures to a CSV. Meant for a scheduled GitLab
-pipeline, not every commit, so Preservica isn't hit with thousands of requests
-on each merge request.
+target_url, slowly, and writes failures to a CSV. Meant for the weekly GitHub
+workflow, not every commit, so Preservica isn't hit with thousands of requests
+on each pull request.
 
 Usage:
     python scripts/check_targets.py manifest/redirects.csv manifest/overrides.csv \

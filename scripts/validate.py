@@ -6,10 +6,10 @@ Usage:
         --allowed-host digital.library.uni.edu
 
 Allowed hosts can also come from the ALLOWED_TARGET_HOSTS environment variable
-(comma-separated), and the NAAN from ARK_NAAN, which is how the GitLab pipeline
-passes them. ARKs under any other NAAN are rejected.
+(comma-separated), and the NAAN from ARK_NAAN, which is how the GitHub workflows
+pass them (from settings.env). ARKs under any other NAAN are rejected.
 
-Exit status is 1 if any errors were found, so CI fails the merge request.
+Exit status is 1 if any errors were found, so the checks fail the pull request.
 """
 
 from __future__ import annotations

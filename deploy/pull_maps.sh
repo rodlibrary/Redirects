@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Fetch the latest redirect maps built by GitLab CI and install them for Apache.
+# Fetch the latest redirect maps published by GitHub Actions and install them for Apache.
 #
 # Runs on the Apache server (from the systemd timer in this directory, or by hand).
-# The server pulls from GitLab, so GitLab never needs SSH access to production.
+# The server pulls from GitHub, so GitHub never needs SSH access to production.
+# The Checks workflow publishes redirect-maps.zip on the "maps" release only after
+# every check on main has passed.
 #
 # Layout under $REDIRECT_ROOT:
 #   releases/20261013T184500Z/{dc_paths,dc_article,ark}.db  + .txt, stats.json, smoke_test.tsv
 #   current -> releases/20261013T184500Z     (what redirects.conf reads)
 #
 # Each run:
-#   1. downloads the build_maps artifact (or uses LOCAL_ARTIFACT=/path/to/artifacts.zip)
+#   1. downloads redirect-maps.zip (or uses LOCAL_ARTIFACT=/path/to/redirect-maps.zip)
 #   2. stops if nothing changed since the installed release
 #   3. refuses the update if any map shrank by more than MAX_DROP_PCT (FORCE=1 overrides)
 #   4. builds DBM files into a new release directory
@@ -18,10 +20,9 @@
 #   7. keeps the newest $KEEP releases
 #
 # Settings come from /etc/dc-redirects/pull.env (or the environment):
-#   GITLAB_URL=https://git.uni.edu         # server address only; the project is PROJECT_ID
-#   PROJECT_ID=2499                      # rod-library/redirects
-#   GITLAB_TOKEN=glpat-...               # project access token: Reporter role, read_api scope
-#   REF=main  JOB=build_maps
+#   GITHUB_REPO=rodlibrary/redirects     # owner/name of the repository
+#   GITHUB_TOKEN=github_pat_...          # fine-grained token: this repository only, Contents read-only
+#   RELEASE_TAG=maps  ASSET=redirect-maps.zip
 #   REDIRECT_ROOT=/etc/httpd/redirects
 #   SMOKE_SERVER=https://127.0.0.1       # where to send smoke-test requests
 #   SMOKE_HOST=scholarworks.uni.edu      # Host/SNI name this server answers to
@@ -33,8 +34,8 @@ ENV_FILE="${ENV_FILE:-/etc/dc-redirects/pull.env}"
 # shellcheck disable=SC1090
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
 
-REF="${REF:-main}"
-JOB="${JOB:-build_maps}"
+RELEASE_TAG="${RELEASE_TAG:-maps}"
+ASSET="${ASSET:-redirect-maps.zip}"
 REDIRECT_ROOT="${REDIRECT_ROOT:-/etc/httpd/redirects}"
 SMOKE_SERVER="${SMOKE_SERVER:-https://127.0.0.1}"
 MAX_DROP_PCT="${MAX_DROP_PCT:-2}"
@@ -55,24 +56,44 @@ mkdir -p "$RELEASES"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# 1. Get the artifact.
+# 1. Get the maps.
 if [ -n "${LOCAL_ARTIFACT:-}" ]; then
     cp "$LOCAL_ARTIFACT" "$WORK/artifacts.zip"
 else
-    : "${GITLAB_URL:?set GITLAB_URL}" "${PROJECT_ID:?set PROJECT_ID}" "${GITLAB_TOKEN:?set GITLAB_TOKEN}"
-    # Accept a pasted project URL (https://git.uni.edu/rod-library/redirects): keep only the server.
-    GITLAB_URL="$(printf '%s' "$GITLAB_URL" | sed -E 's#^(https?://[^/]+).*#\1#')"
-    curl --fail --silent --show-error --location --max-time 300 \
-        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-        --output "$WORK/artifacts.zip" \
-        "$GITLAB_URL/api/v4/projects/$PROJECT_ID/jobs/artifacts/$REF/download?job=$JOB" \
-        || die "could not download the $JOB artifact for $REF"
+    : "${GITHUB_REPO:?set GITHUB_REPO}" "${GITHUB_TOKEN:?set GITHUB_TOKEN}"
+    # Accept a pasted repository URL (https://github.com/rodlibrary/redirects): keep owner/name.
+    GITHUB_REPO="$(printf '%s' "$GITHUB_REPO" | sed -E 's#^https?://github\.com/##; s#\.git$##; s#/+$##')"
+    API="${GITHUB_API:-https://api.github.com}"
+    AUTH=(--header "Authorization: Bearer $GITHUB_TOKEN" --header "X-GitHub-Api-Version: 2022-11-28")
+    code="$(curl --silent --show-error --max-time 60 "${AUTH[@]}" \
+        --header "Accept: application/vnd.github+json" --write-out '%{http_code}' \
+        --output "$WORK/release.json" "$API/repos/$GITHUB_REPO/releases/tags/$RELEASE_TAG")" \
+        || die "could not reach $API (check this server's outbound HTTPS access to GitHub)"
+    case "$code" in
+        200) ;;
+        401) die "GitHub rejected GITHUB_TOKEN (HTTP 401): it is wrong, expired or revoked" ;;
+        403) die "GITHUB_TOKEN can't read $GITHUB_REPO (HTTP 403): it needs Contents: Read-only on that repository, and the organization may need to approve it" ;;
+        404) die "no $RELEASE_TAG release in $GITHUB_REPO (HTTP 404): it appears after the Checks workflow first passes on main; also check GITHUB_REPO and that the token covers that repository" ;;
+        *)   die "GitHub answered HTTP $code for the $RELEASE_TAG release of $GITHUB_REPO" ;;
+    esac
+    ASSET_URL="$(python3 - "$WORK/release.json" "$ASSET" <<'PY'
+import json, sys
+assets = json.load(open(sys.argv[1])).get("assets", [])
+print(next((a["url"] for a in assets if a["name"] == sys.argv[2]), ""))
+PY
+)"
+    [ -n "$ASSET_URL" ] || die "the $RELEASE_TAG release has no $ASSET (has the Checks workflow passed on main yet?)"
+    # GitHub answers with a redirect to its file storage; curl doesn't forward the token there.
+    curl --fail --silent --show-error --location --max-time 300 "${AUTH[@]}" \
+        --header "Accept: application/octet-stream" \
+        --output "$WORK/artifacts.zip" "$ASSET_URL" \
+        || die "could not download $ASSET from the $RELEASE_TAG release"
 fi
 python3 -c "import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
     "$WORK/artifacts.zip" "$WORK/unpacked"
 NEW="$WORK/unpacked/maps"
 for f in dc_paths.txt dc_article.txt ark.txt stats.json smoke_test.tsv; do
-    [ -s "$NEW/$f" ] || die "artifact is missing maps/$f"
+    [ -s "$NEW/$f" ] || die "$ASSET is missing maps/$f"
 done
 CHECKER="$WORK/unpacked/scripts/check_redirects.py"
 
@@ -102,6 +123,8 @@ fi
 
 # 4. Build the release.
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+# Two runs in the same second (the timer and a manual run) must not share a directory.
+n=1; while [ -e "$RELEASES/$STAMP" ] || [ -e "$RELEASES/$STAMP.failed" ]; do n=$((n + 1)); STAMP="$(date -u +%Y%m%dT%H%M%SZ)-$n"; done
 REL="$RELEASES/$STAMP"
 mkdir -p "$REL"
 cp "$NEW"/*.txt "$NEW/stats.json" "$NEW/smoke_test.tsv" "$REL/"
