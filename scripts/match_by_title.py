@@ -25,7 +25,9 @@ staging/title_match_review.csv; fill those in by hand (paste the reference or
 portal address into preservica_ref) and they're kept on later runs.
 
 Credentials as for match_preservica.py: PRESERVICA_HOST, PRESERVICA_USER,
-PRESERVICA_PASSWORD, and PRESERVICA_TENANT on Preservica older than 6.3.
+PRESERVICA_PASSWORD and PRESERVICA_TENANT (UNIOWA for Rod Library). The account
+needs Read Metadata on the migrated records' security tags; the script stops
+after logging in if the account can't see any records.
 
 Usage:
     python scripts/match_by_title.py --manifest manifest/redirects.csv \\

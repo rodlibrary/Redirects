@@ -16,7 +16,9 @@
 # review and commit.
 
 variables:
-  # Override these in Settings > CI/CD > Variables rather than editing here.
+  # Change these here, through a merge request. Don't also set them in Settings >
+  # CI/CD > Variables: a Settings variable silently overrides this file. Only the
+  # Preservica login (PRESERVICA_HOST, PRESERVICA_USER, PRESERVICA_PASSWORD) goes there.
   ALLOWED_TARGET_HOSTS: "uni.access.preservica.com,digital.library.uni.edu"
   DC_HOST: "scholarworks.uni.edu"
   ARK_HOST: "library.uni.edu"
@@ -26,6 +28,9 @@ variables:
   # CONFIRM against a real Access portal link before the first full refresh.
   PRESERVICA_TARGET_TEMPLATE: "https://{access_host}/portal/en-US/{kind}/{sdb}"
   DC_OAI_URL: "https://scholarworks.uni.edu/do/oai/"
+  # Rod Library's Preservica tenant on us.preservica.com. Not secret; a wrong value
+  # makes the login fail with "incorrect.tenant".
+  PRESERVICA_TENANT: "UNIOWA"
 
 stages: [validate, build, test, maintenance]
 
@@ -125,8 +130,8 @@ refresh_manifest:
       when: manual
   allow_failure: true
   # Needs project CI/CD variables (Settings > CI/CD > Variables), all protected:
-  # PRESERVICA_HOST, PRESERVICA_USER, PRESERVICA_PASSWORD (masked) and, only on
-  # Preservica older than 6.3, PRESERVICA_TENANT. DC_OAI_URL is set above.
+  # PRESERVICA_HOST, PRESERVICA_USER and PRESERVICA_PASSWORD (masked).
+  # PRESERVICA_TENANT and DC_OAI_URL are set above.
   # Set SKIP_HARVEST=1 after Digital Commons is shut off to re-match the last
   # committed staging/dc_items.csv instead.
   script:

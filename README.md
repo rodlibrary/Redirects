@@ -51,6 +51,9 @@ Checked against the live sites on 2026-10-13:
 
 * **ScholarWorks:** `scholarworks.uni.edu`, OAI-PMH endpoint
   `https://scholarworks.uni.edu/do/oai/`.
+* **Preservica API:** `us.preservica.com`, tenant `UNIOWA`, Preservica 9.4 (checked
+  2026-10-30). The Access portal `uni.access.preservica.com` has no API: a login there
+  returns 404.
 * **Preservica:** item links go to the Access portal at `uni.access.preservica.com`.
   The ScholarWorks home page and the "moved" page link to `digital.library.uni.edu`.
   Contact address on the "moved" page: `library@uni.edu`.
@@ -172,9 +175,16 @@ script can do it). Different names can be set with `--id-type`, `--id-template`,
 `--series-id-type` and `--ark-id-type`.
 
 Ask your Preservica administrator for a **service account** for the pipeline:
-read and search access to everything migrated from ScholarWorks, no edit or ingest
-rights, and **no two-factor sign-in** (the scripts log in with a user name and
+**Read Metadata** on the security tags of everything migrated from ScholarWorks, no
+edit or ingest rights, a Preservica password of its own (not a university single
+sign-on login), and **no two-factor sign-in** (the scripts log in with a user name and
 password only). API access depends on the licensed Preservica edition.
+
+*Read Content* on its own isn't enough. Preservica hides records the account can't
+read the metadata of, so lookups come back empty rather than failing; the matching
+scripts stop with an explanation if the account can't see any records. To check the
+account, sign in to Preservica in a browser as it and browse or search: what it sees
+there is what the pipeline will see.
 
 Check the login from PowerShell before using it in GitLab (replace the host with the
 server staff sign in to for Preservica's management screens, not the public portal):
@@ -182,12 +192,19 @@ server staff sign in to for Preservica's management screens, not the public port
 ```powershell
 $cred = Get-Credential
 Invoke-RestMethod -Method Post -Uri "https://us.preservica.com/api/accesstoken/login" `
-  -Body @{ username = $cred.UserName; password = $cred.GetNetworkCredential().Password }
+  -Body @{ username = $cred.UserName; password = $cred.GetNetworkCredential().Password; tenant = "UNIOWA" }
 ```
 
-A result containing `token` means the account works. On Preservica older than 6.3,
-add `; tenant = "YOURCODE"` inside the `@{ }`. Don't paste the output anywhere; the
-token works as a temporary login.
+A result containing `token` means the account works. Don't paste the output anywhere;
+the token works as a temporary login. If it fails, the server's message says why:
+
+| Message | Meaning |
+|---|---|
+| `incorrect.tenant` | the tenant is wrong, or the user name doesn't exist in tenant `UNIOWA` |
+| `Bad credentials` | the password is wrong, or the account signs in through the university login and has no Preservica password |
+| HTTP 404 | wrong host, e.g. the public portal instead of `us.preservica.com` |
+
+The matching scripts report the same message when their login fails.
 
 Finally, confirm the link format (see "Still to confirm" above).
 
@@ -211,15 +228,15 @@ article numbers came from the OAI identifier, not from a file URL.
 You need the Maintainer role on the project.
 
 **CI/CD variables** (Settings → CI/CD → Variables → Add variable). Only the Preservica
-login goes here; every other setting is already in `.gitlab-ci.yml`. Don't repeat
-those in Settings, because a Settings variable silently overrides the file.
+login goes here; every other setting, including `PRESERVICA_TENANT` (`UNIOWA`), is
+already in `.gitlab-ci.yml`. Don't repeat those in Settings, because a Settings
+variable silently overrides the file.
 
 | Key | Value | Visibility | Protect | Expand variable reference |
 |---|---|---|---|---|
 | `PRESERVICA_HOST` | server staff sign in to, hostname only (e.g. `us.preservica.com`); not `uni.access.preservica.com` | Visible | ✔ | Clear |
 | `PRESERVICA_USER` | the service account's user name | Visible | ✔ | Clear |
 | `PRESERVICA_PASSWORD` | the service account's password | Masked (or Masked and hidden) | ✔ | **Clear** |
-| `PRESERVICA_TENANT` | only on Preservica older than 6.3 | Visible | ✔ | Clear |
 
 *Protect* limits the values to pipelines on protected branches (`main`), so a merge
 request can't read them. Clearing *Expand variable reference* stops GitLab from
@@ -284,7 +301,7 @@ The GitLab runner needs network access to `scholarworks.uni.edu` and to your
 Preservica host. To run the same steps by hand instead:
 
 ```bash
-export PRESERVICA_HOST=us.preservica.com PRESERVICA_USER=... PRESERVICA_PASSWORD=...
+export PRESERVICA_HOST=us.preservica.com PRESERVICA_TENANT=UNIOWA PRESERVICA_USER=... PRESERVICA_PASSWORD=...
 python3 scripts/match_preservica.py staging/dc_items.csv \
     --access-host uni.access.preservica.com \
     --existing manifest/redirects.csv --out manifest/redirects.csv \
@@ -381,4 +398,15 @@ test suite fails if the flag is removed.
 
 ## Monitoring
 
-* **Missed requests:** `redirects_miss.log` (see `vhost-example.conf`
+* **Missed requests:** `redirects_miss.log` (see `vhost-example.conf`) records every
+  request answered with 404 or 410, with its referrer. Check it regularly: frequent
+  404s show items or pages the manifest is missing, which can be added to
+  `overrides.csv`.
+* **Broken targets:** the weekly `check_targets` pipeline writes `target_failures.csv`
+  as a job artifact, listing redirect targets that no longer resolve in Preservica and
+  the manifest row each came from.
+* **Deploys:** `journalctl -u dc-redirects-pull.service` on each server shows every
+  pull, any update refused by the shrink guard, and any automatic rollback after a
+  failed smoke test.
+* **ARK use:** the optional `ark_access.log` in `library-vhost-example.conf` shows which
+  ARKs are being cited.

@@ -17,7 +17,12 @@ Credentials come from environment variables, never the command line:
     PRESERVICA_HOST       the Preservica server you sign in to, e.g. us.preservica.com
     PRESERVICA_USER       a Preservica user name (a read-only service account)
     PRESERVICA_PASSWORD
-    PRESERVICA_TENANT     optional on Preservica 6.3 and later; needed on older systems
+    PRESERVICA_TENANT     the tenant code; Rod Library's is UNIOWA (set in .gitlab-ci.yml).
+                          Some single-tenant systems accept a login without it.
+
+The account needs Read Metadata on the security tags of the migrated records.
+Without it Preservica returns no records at all rather than an error, so this
+script stops straight after logging in if the account can't see anything.
 
 Usage:
     python scripts/match_preservica.py staging/dc_items.csv \
@@ -80,6 +85,30 @@ def parents(path: str) -> list[str]:
     return ["/".join(parts[:i]) for i in range(len(parts) - 1, 0, -1)]
 
 
+def login_failure(base: str, code: int, body: bytes) -> str:
+    """Explain a failed login, using Preservica's own reason where it gives one."""
+    text = body.decode("utf-8", "replace")
+    try:
+        reason = json.loads(text).get("message", "")
+    except ValueError:
+        reason = ""
+    hints = {
+        "incorrect.tenant": "the tenant is wrong, or the user doesn't exist in that tenant: "
+                            "check PRESERVICA_TENANT (UNIOWA for Rod Library) and PRESERVICA_USER",
+        "Bad credentials": "the password is wrong, or the account signs in through the university "
+                           "login and has no Preservica password of its own",
+    }
+    hint = next((h for key, h in hints.items() if key in reason), "")
+    if code == 404:
+        hint = ("there's no Preservica API at this address: PRESERVICA_HOST must be the server "
+                "staff sign in to (e.g. us.preservica.com), not the public portal")
+    if not hint:
+        hint = ("check PRESERVICA_USER, PRESERVICA_PASSWORD and PRESERVICA_TENANT, and that the "
+                "account doesn't require two-factor sign-in")
+    said = f" Preservica said: {reason}." if reason else ""
+    return f"error: Preservica login at {base} failed (HTTP {code}).{said} Most likely {hint}."
+
+
 def local(tag: str) -> str:
     """Element name without its namespace (the Entity API namespace changes by version)."""
     return tag.rsplit("}", 1)[-1]
@@ -90,11 +119,12 @@ class Preservica:
         # Accept a bare hostname, or a full base URL (useful for testing).
         self.base = host.rstrip("/") if host.startswith(("http://", "https://")) else f"https://{host}"
         self.creds = {"username": user, "password": password}
-        if tenant:  # optional from Preservica 6.3
+        if tenant:  # some single-tenant systems accept a login without one
             self.creds["tenant"] = tenant
         self.pause = pause
         self.token = ""
         self.login()
+        self.check_access()
 
     def login(self) -> None:
         data = urllib.parse.urlencode(self.creds).encode()
@@ -103,11 +133,23 @@ class Preservica:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 self.token = json.loads(resp.read())["token"]
         except urllib.error.HTTPError as exc:
+            raise SystemExit(login_failure(self.base, exc.code, exc.read())) from None
+
+    def check_access(self) -> None:
+        """Stop early if the account can log in but can't see any records.
+
+        Preservica hides records the account has no Read Metadata permission for,
+        so without this every lookup would quietly come back empty and every item
+        would be reported as unmatched.
+        """
+        root = self.get("/api/entity/root/children", {"start": 0, "max": 1})
+        if not any(local(el.tag) == "Child" for el in root.iter()):
             raise SystemExit(
-                f"error: Preservica login at {self.base} failed (HTTP {exc.code}). Check "
-                "PRESERVICA_USER and PRESERVICA_PASSWORD, add PRESERVICA_TENANT if your "
-                "system needs it, and make sure the account doesn't require two-factor sign-in."
-            ) from None
+                f"error: logged in to {self.base} as {self.creds['username']}, but the account "
+                "can't see any records. Ask your Preservica administrator to give its role "
+                "Read Metadata on the security tags of the migrated records (Read Content "
+                "alone isn't enough), then run this again."
+            )
 
     def get(self, path: str, params: dict | None = None) -> ET.Element:
         url = f"{self.base}{path}"
