@@ -1,19 +1,15 @@
 # Checks on every pull request and every push to main:
-#   validate      check the manifest (fails the pull request on any error)
-#   build_maps    turn the manifest into Apache map files
-#   apache_test   run a real Apache with the maps and check redirects
-#   secret_scan   look for passwords or tokens committed by mistake (gitleaks)
-#
-# On main, once all of these pass, publish_maps puts the maps on the "maps" release as
-# redirect-maps.zip. That is what the servers download, so a failing test keeps a bad
-# manifest off production.
+#   check        the ARK manifest and master list are consistent (unique ARKs, NAAN
+#                32498, valid Preservica references) and the script tests pass
+#   preview      builds redirects.csv exactly as it would be pushed to GitLab
+#   secret_scan  looks for passwords or tokens committed by mistake (gitleaks)
 name: Checks
 
 on:
   push:
     branches: [main]
   pull_request:
-  # Lets the refresh workflow run these checks on the pull request it opens.
+  # Lets the other workflows run these checks on the pull requests they open.
   workflow_dispatch:
 
 permissions:
@@ -24,7 +20,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  validate:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -34,12 +30,13 @@ jobs:
           python-version: "3.12"
       - name: Load settings.env
         run: grep -E '^[A-Z_][A-Z0-9_]*=' settings.env >> "$GITHUB_ENV"
-      - name: Validate the manifest
-        run: python3 scripts/validate.py manifest/redirects.csv manifest/overrides.csv
-      - name: Validate the test fixtures
-        run: python3 scripts/validate.py tests/fixtures/redirects.csv tests/fixtures/overrides.csv
+      - name: Check the ARK manifest
+        run: python3 arks/ark_manifest.py check
+      - name: Test the scripts
+        run: python3 -m unittest discover -s arks -p 'test_*.py' -v
 
-  build_maps:
+  preview:
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -47,35 +44,15 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Load settings.env
-        run: grep -E '^[A-Z_][A-Z0-9_]*=' settings.env >> "$GITHUB_ENV"
-      - name: Build the Apache maps
-        run: python3 scripts/build_maps.py --out maps/ --dc-host "$DC_HOST" --ark-host "$ARK_HOST"
-      # Same layout as the old GitLab artifact: maps/ plus the checker the servers run.
+      - name: Build redirects.csv
+        run: |
+          mkdir -p build
+          python3 arks/ark_manifest.py redirects --out build/redirects.csv | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         with:
-          name: redirect-maps
-          path: |
-            maps/
-            scripts/check_redirects.py
-          retention-days: 90
-          if-no-files-found: error
-
-  apache_test:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container: httpd:2.4
-    steps:
-      - name: Install Python
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 >/dev/null
-      - uses: actions/checkout@v6
-      - name: Load settings.env
-        run: grep -E '^[A-Z_][A-Z0-9_]*=' settings.env >> "$GITHUB_ENV"
-      - name: Hand-written edge cases against the fixtures
-        run: bash tests/run_apache_test.sh
-      - name: A random sample of the real manifest
-        run: bash tests/run_apache_test.sh manifest/redirects.csv manifest/overrides.csv
+          name: redirects-preview
+          path: build/redirects.csv
+          retention-days: 30
 
   secret_scan:
     runs-on: ubuntu-latest
@@ -92,34 +69,3 @@ jobs:
             | tar -xz -C "$RUNNER_TEMP" gitleaks
       - name: Scan every commit for passwords and tokens
         run: '"$RUNNER_TEMP/gitleaks" git --redact --no-banner --verbose .'
-
-  publish_maps:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [validate, build_maps, apache_test, secret_scan]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    concurrency:
-      group: publish-maps
-      cancel-in-progress: false
-    steps:
-      - uses: actions/download-artifact@v7
-        with:
-          name: redirect-maps
-          path: bundle
-      - name: Package redirect-maps.zip
-        run: cd bundle && zip -qr ../redirect-maps.zip maps scripts && cd .. && unzip -l redirect-maps.zip
-      - name: Publish on the "maps" release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          notes="Redirect maps built from commit ${GITHUB_SHA::7} on $(date -u '+%Y-%m-%d %H:%M UTC'). The servers' pull_maps.sh downloads redirect-maps.zip from this release every 15 minutes. Replaced automatically after every successful check on main; don't edit or delete it."
-          if gh release view maps >/dev/null 2>&1; then
-            gh release upload maps redirect-maps.zip --clobber
-            gh release edit maps --notes "$notes"
-          else
-            gh release create maps redirect-maps.zip --target "$GITHUB_SHA" \
-              --title "Redirect maps (current)" --notes "$notes" --latest=false
-          fi
