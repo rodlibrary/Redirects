@@ -1,0 +1,147 @@
+# Pipeline for the Digital Commons -> Preservica redirect manifest.
+#
+# On every merge request and push to main:
+#   validate      check the manifest (fails the MR on any error)
+#   build_maps    turn the manifest into Apache map files (the artifact the server pulls)
+#   apache_test   run a real Apache with the maps and check redirects
+#
+# The server's pull script downloads build_maps from the latest *successful*
+# pipeline on main, so a failing test keeps a bad manifest off production.
+#
+# Scheduled pipelines (CI/CD > Schedules) run check_targets instead, to find
+# redirect targets that have stopped resolving in Preservica.
+#
+# refresh_manifest is a manual job that re-harvests Digital Commons and re-matches
+# against Preservica; it produces an updated manifest as an artifact for someone to
+# review and commit.
+
+variables:
+  # Override these in Settings > CI/CD > Variables rather than editing here.
+  ALLOWED_TARGET_HOSTS: "uni.access.preservica.com,digital.library.uni.edu"
+  DC_HOST: "scholarworks.uni.edu"
+  ARK_HOST: "library.uni.edu"
+  ARK_NAAN: "32498"
+  PRESERVICA_ACCESS_HOST: "uni.access.preservica.com"
+  # Redirect target pattern; fields are explained in scripts/match_preservica.py.
+  # CONFIRM against a real Access portal link before the first full refresh.
+  PRESERVICA_TARGET_TEMPLATE: "https://{access_host}/portal/en-US/{kind}/{sdb}"
+  DC_OAI_URL: "https://scholarworks.uni.edu/do/oai/"
+
+stages: [validate, build, test, maintenance]
+
+default:
+  image: python:3.12-slim
+  interruptible: true
+
+.on_changes:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+validate:
+  stage: validate
+  extends: .on_changes
+  script:
+    - python3 scripts/validate.py manifest/redirects.csv manifest/overrides.csv
+    - python3 scripts/validate.py tests/fixtures/redirects.csv tests/fixtures/overrides.csv
+
+build_maps:
+  stage: build
+  extends: .on_changes
+  script:
+    - python3 scripts/build_maps.py --out maps/ --dc-host "$DC_HOST" --ark-host "$ARK_HOST"
+  artifacts:
+    name: "redirect-maps-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - maps/
+      - scripts/check_redirects.py
+    expire_in: 1 year
+
+apache_test:
+  stage: test
+  extends: .on_changes
+  image: httpd:2.4
+  needs: [validate]
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3 >/dev/null
+  script:
+    # Hand-written edge cases against the fixtures.
+    - tests/run_apache_test.sh
+    # A random sample of the real manifest.
+    - tests/run_apache_test.sh manifest/redirects.csv manifest/overrides.csv
+
+check_targets:
+  stage: maintenance
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  timeout: 6h
+  script:
+    - python3 scripts/check_targets.py manifest/redirects.csv manifest/overrides.csv
+        --report target_failures.csv --pause 0.5
+  artifacts:
+    when: always
+    paths: [target_failures.csv]
+    expire_in: 3 months
+
+match_by_title:
+  stage: maintenance
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  allow_failure: true
+  timeout: 6h
+  # Fills preservica_ref by matching ScholarWorks titles to Preservica Assets, for
+  # when the Assets don't carry dc_article identifiers. Uses the same Preservica
+  # variables as refresh_manifest. Optional variables when running it:
+  #   PRESERVICA_ROOT_FOLDER  list only this Folder (reference or portal address)
+  #   SKIP_HARVEST=1          reuse the committed staging/dc_items.csv
+  # References already in the manifest, including hand-entered ones, are kept.
+  script:
+    - if [ "${SKIP_HARVEST:-0}" != 1 ]; then
+        python3 scripts/harvest_dc.py --base-url "$DC_OAI_URL" --dc-host "$DC_HOST" --out staging/dc_items.csv;
+      fi
+    - python3 scripts/match_preservica.py staging/dc_items.csv
+        --access-host "$PRESERVICA_ACCESS_HOST"
+        --existing manifest/redirects.csv --out manifest/redirects.csv
+        --unmatched-report staging/unmatched.csv --series --no-lookup
+    - python3 scripts/match_by_title.py --manifest manifest/redirects.csv
+        --items staging/dc_items.csv
+    - python3 scripts/validate.py manifest/redirects.csv manifest/overrides.csv
+  artifacts:
+    when: always
+    paths: [manifest/redirects.csv, staging/]
+    expire_in: 1 month
+
+refresh_manifest:
+  stage: maintenance
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  allow_failure: true
+  # Needs project CI/CD variables (Settings > CI/CD > Variables), all protected:
+  # PRESERVICA_HOST, PRESERVICA_USER, PRESERVICA_PASSWORD (masked) and, only on
+  # Preservica older than 6.3, PRESERVICA_TENANT. DC_OAI_URL is set above.
+  # Set SKIP_HARVEST=1 after Digital Commons is shut off to re-match the last
+  # committed staging/dc_items.csv instead.
+  script:
+    - if [ "${SKIP_HARVEST:-0}" != 1 ]; then
+        python3 scripts/harvest_dc.py --base-url "$DC_OAI_URL" --dc-host "$DC_HOST" --out staging/dc_items.csv;
+      fi
+    - python3 scripts/match_preservica.py staging/dc_items.csv
+        --access-host "$PRESERVICA_ACCESS_HOST"
+        --existing manifest/redirects.csv --out manifest/redirects.csv
+        --unmatched-report staging/unmatched.csv
+        --ark-id-type "${ARK_ID_TYPE:-ark}" --series
+    - python3 scripts/validate.py manifest/redirects.csv manifest/overrides.csv
+  artifacts:
+    paths: [manifest/redirects.csv, staging/]
+    expire_in: 1 month
+# GitLab Secret Detection: flags tokens or passwords committed by mistake.
+include:
+  - template: Security/Secret-Detection.gitlab-ci.yml

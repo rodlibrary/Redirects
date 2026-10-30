@@ -1,0 +1,7 @@
+# Merge requests touching these paths need approval from a member of the
+# rod-library group. Narrow these to subgroups or named people (e.g. @username)
+# once you decide who reviews manifest changes versus server configuration.
+/manifest/        @rod-library
+/apache/          @rod-library
+/deploy/          @rod-library
+/.gitlab-ci.yml   @rod-library

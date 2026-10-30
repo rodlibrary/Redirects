@@ -1,0 +1,62 @@
+# host	path	expected_status	expected_location
+# Landing pages and series
+scholarworks.uni.edu	/etd/123/	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+scholarworks.uni.edu	/etd/123	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+scholarworks.uni.edu	/ETD/123/	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+scholarworks.uni.edu	/etd/123/?utm_source=x	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+scholarworks.uni.edu	/etd/	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-000000000001
+# Override wins for the landing page
+scholarworks.uni.edu	/etd/124/	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-0000000009aa
+# Withdrawn
+scholarworks.uni.edu	/etd/125/	410	
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1126&context=etd	410	
+library.uni.edu	/ark:/32498/x7k9s	410	
+# File URLs, either parameter order, mixed case
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1124&context=etd	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+scholarworks.uni.edu	/cgi/viewcontent.cgi?context=etd&article=1124	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+scholarworks.uni.edu	/cgi/viewcontent.cgi?referer=&httpsredir=1&article=1124&context=ETD	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+scholarworks.uni.edu	/context/etd/article/1124/viewcontent/thesis.pdf	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+# ARKs: both forms, hyphens, trailing slash
+library.uni.edu	/ark:/32498/x7k9q	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+library.uni.edu	/ark:32498/x7k9q	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+library.uni.edu	/ark:/32498/x7-k9-q	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+library.uni.edu	/ark:/32498/x7k9q/	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+library.uni.edu	/ark:/32498/x7k9r	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000124
+# Unknown or unmatched -> 404 page
+scholarworks.uni.edu	/facpub/7/	404	
+scholarworks.uni.edu	/etd/99999/	404	
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=9999&context=etd	404	
+scholarworks.uni.edu	/do/search/?q=water	404	
+library.uni.edu	/ark:/32498/nope	404	
+# Home page
+scholarworks.uni.edu	/	301	https://digital.library.uni.edu/
+# UNI-specific URL shapes (checked against scholarworks.uni.edu)
+scholarworks.uni.edu	/facsenate_documents/221	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000221
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1221&context=facsenate_documents	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000221
+scholarworks.uni.edu	/pias/vol94/iss4/3	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000a03
+scholarworks.uni.edu	/pias/vol94/iss4/3/	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000a03
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1002&context=pias	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000a03
+scholarworks.uni.edu	/pias/vol94/iss4/	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000a2
+scholarworks.uni.edu	/pias/vol94/	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000a1
+scholarworks.uni.edu	/pias/	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000a1
+scholarworks.uni.edu	/pias/about.html	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000a1
+scholarworks.uni.edu	/etd/index.2.html	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-000000000001
+scholarworks.uni.edu	/journal-stem-arts	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000b1
+scholarworks.uni.edu	/journal-stem-arts/vol4/iss1/2	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000b02
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1047&context=journal-stem-arts	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000b02
+scholarworks.uni.edu	/context/journal-stem-arts/article/1047/viewcontent/paper.pdf	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000b02
+scholarworks.uni.edu	/pias/vol94/iss4/99	404	
+scholarworks.uni.edu	/pias/vol93/	404	
+scholarworks.uni.edu	/about.html	404	
+scholarworks.uni.edu	/communities.html	404	
+scholarworks.uni.edu	/nosuchseries/about.html	404	
+# Host split: ARKs on both hosts; on library.uni.edu everything else reaches the website (200)
+scholarworks.uni.edu	/ark:/32498/x7k9q	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+library.uni.edu	/etd/123/	200	
+library.uni.edu	/cgi/viewcontent.cgi?article=1124&context=etd	200	
+library.uni.edu	/ark:/99999/x7k9q	200	
+library.uni.edu	/ark:/32498/x7k9q?info	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123
+library.uni.edu	/hours	200	
+# Row with only a pasted reference: link built from preservica_ref
+scholarworks.uni.edu	/etd/130/	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000130
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1131&context=etd	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000130

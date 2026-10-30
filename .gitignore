@@ -1,0 +1,6 @@
+maps/
+target_failures.csv
+__pycache__/
+*.pyc
+.env
+pull.env

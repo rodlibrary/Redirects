@@ -1,0 +1,14 @@
+dc_path,dc_article,ark,preservica_ref,target_url,status,notes
+etd,,,SO_0f6c5a10-1111-4a2b-9c3d-000000000001,https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-000000000001,active,series
+etd/123,etd/1124,32498/x7k9q,IO_5b2f0a10-2222-4a2b-9c3d-000000000123,https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000123,active,
+etd/124,etd/1125,ark:/32498/x7-k9-r,IO_5b2f0a10-2222-4a2b-9c3d-000000000124,https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000124,active,ARK given with prefix and hyphens
+etd/125,etd/1126,32498/x7k9s,,,withdrawn,removed at author request
+facpub/7,facpub/1006,,,,unmatched,0 entities for dc_article=facpub-1006
+facsenate_documents/221,facsenate_documents/1221,,IO_5b2f0a10-2222-4a2b-9c3d-000000000221,https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000221,active,real UNI example: path 221 / article 1221
+pias,,,SO_0f6c5a10-1111-4a2b-9c3d-0000000000a1,https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000a1,active,collection
+pias/vol94,,,SO_0f6c5a10-1111-4a2b-9c3d-0000000000a1,https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000a1,active,fallback to pias
+pias/vol94/iss4,,,SO_0f6c5a10-1111-4a2b-9c3d-0000000000a2,https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000a2,active,collection
+pias/vol94/iss4/3,pias/1002,,IO_5b2f0a10-2222-4a2b-9c3d-000000000a03,https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000a03,active,journal article
+journal-stem-arts,,,SO_0f6c5a10-1111-4a2b-9c3d-0000000000b1,https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-0000000000b1,active,hyphenated journal name
+journal-stem-arts/vol4/iss1/2,journal-stem-arts/1047,,IO_5b2f0a10-2222-4a2b-9c3d-000000000b02,https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000b02,active,
+etd/130,etd/1131,,https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000130,,unmatched,reference pasted by hand; link built from it
