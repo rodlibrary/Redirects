@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # Start a throwaway Apache on 127.0.0.1:8080 with this repository's rules and check:
-#   1. tests/expected.tsv against tests/fixtures/redirects.csv + ark_redirects.csv
-#      (every kind of redirect, from two lists as on the servers)
-#   2. every redirect in the real lists: redirects.csv and the ARK redirects built from
-#      arks/arks_manifest.csv (a sample of 500 of each kind once they're bigger)
+#   1. tests/expected.tsv against tests/fixtures/redirects.csv (every kind of redirect)
+#   2. every redirect in the real redirects.csv (a sample of 500 once it's bigger)
 #   3. that build_map.py rejects tests/fixtures/bad.csv, and two lists that disagree
 #
 # Works on Ubuntu/Debian (as in GitHub Actions), RHEL, or the official httpd:2.4 image.
 # Run as root (sudo), so Apache can switch to its usual user.
-# Usage: tests/run_apache_test.sh [redirect-list.csv ...]
+# Usage: tests/run_apache_test.sh [redirects.csv ...]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,23 +25,16 @@ else
 fi
 export MODULE_DIR TEST_ROOT REPO_ROOT RUN_USER   # read by tests/httpd-test.conf
 
-mkdir -p "$TEST_ROOT/site" && echo "library website" > "$TEST_ROOT/site/index.html"
 # A copy of the "moved" page: Apache's user may not be able to read the checkout
 # (on GitHub's runners /home/runner is private), as on the servers it lives in /etc.
 cp -r "$REPO_ROOT/apache/www" "$TEST_ROOT/www"
 
-if [ "$#" -gt 0 ]; then
-    REAL=("$@")
-else
-    python3 "$REPO_ROOT/arks/ark_manifest.py" --manifest "$REPO_ROOT/arks/arks_manifest.csv" \
-        redirects --out "$TEST_ROOT/ark_redirects.csv"
-    REAL=("$REPO_ROOT/redirects.csv" "$TEST_ROOT/ark_redirects.csv")
-fi
+if [ "$#" -gt 0 ]; then REAL=("$@"); else REAL=("$REPO_ROOT/redirects.csv"); fi
 
 build() {  # build() CSV...: lookup files from the lists into $TEST_ROOT/maps
     rm -rf "$TEST_ROOT/maps"
     python3 "$REPO_ROOT/scripts/build_map.py" "$@" --out "$TEST_ROOT/maps" --sample 500 --seed 1
-    for m in dc_paths dc_article ark; do
+    for m in dc_paths dc_article; do
         "$TXT2DBM" -f default -i "$TEST_ROOT/maps/$m.txt" -o "$TEST_ROOT/maps/$m.db" >/dev/null
     done
     chmod -R a+rX "$TEST_ROOT"
@@ -64,12 +55,12 @@ check() { python3 "$REPO_ROOT/tests/check_redirects.py" "$1" --server http://127
 
 status=0
 echo "== 1. every kind of redirect (tests/fixtures + tests/expected.tsv) =="
-build "$REPO_ROOT/tests/fixtures/redirects.csv" "$REPO_ROOT/tests/fixtures/ark_redirects.csv"
+build "$REPO_ROOT/tests/fixtures/redirects.csv"
 start_apache
 check "$REPO_ROOT/tests/expected.tsv" || status=1
 stop_apache
 
-echo "== 2. the real redirect lists (${REAL[*]##*/}) =="
+echo "== 2. the real redirects (${REAL[*]##*/}) =="
 build "${REAL[@]}"
 start_apache
 check "$TEST_ROOT/maps/sample.tsv" || status=1

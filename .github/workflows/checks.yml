@@ -1,9 +1,6 @@
 # Checks on every pull request and every push to main:
-#   check        the ARK manifest and master list are consistent (unique ARKs, NAAN
-#                32498, valid Preservica references) and the script tests pass
-#   redirects    every row of redirects.csv and of the ARK redirects is valid, and the
-#                two lists don't disagree; attaches the lookup files the servers would
-#                install (artifact redirects-preview)
+#   redirects    every row of redirects.csv is valid; attaches the lookup files the
+#                servers would install (artifact redirects-preview)
 #   apache_test  runs a real Apache with the rules in apache/ and checks every kind of
 #                redirect plus every real redirect
 #   secret_scan  looks for passwords or tokens committed by mistake (gitleaks)
@@ -13,7 +10,6 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Lets the other workflows run these checks on the pull requests they open.
   workflow_dispatch:
 
 permissions:
@@ -24,21 +20,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Load settings.env
-        run: grep -E '^[A-Z_][A-Z0-9_]*=' settings.env >> "$GITHUB_ENV"
-      - name: Check the ARK manifest
-        run: python3 arks/ark_manifest.py check
-      - name: Test the scripts
-        run: python3 -m unittest discover -s arks -p 'test_*.py' -v
-
   redirects:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -49,19 +30,13 @@ jobs:
           python-version: "3.12"
       - name: Load settings.env
         run: grep -E '^[A-Z_][A-Z0-9_]*=' settings.env >> "$GITHUB_ENV"
-      - name: Build the ARK redirects
-        run: python3 arks/ark_manifest.py redirects --out build/ark_redirects.csv | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Check redirects.csv and the ARK redirects
-        run: |
-          python3 scripts/build_map.py redirects.csv build/ark_redirects.csv --out build/maps \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Check redirects.csv
+        run: python3 scripts/build_map.py redirects.csv --out build/maps | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: redirects-preview
-          path: |
-            build/ark_redirects.csv
-            build/maps/
+          path: build/maps/
           retention-days: 30
 
   apache_test:

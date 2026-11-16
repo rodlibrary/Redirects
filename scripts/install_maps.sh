@@ -3,8 +3,7 @@
 #
 #   scripts/install_maps.sh [redirect-list.csv ...]
 #
-# With no arguments it uses this repository's two lists: redirects.csv (DCDS's old
-# ScholarWorks addresses) and the ARK redirects built from arks/arks_manifest.csv.
+# With no arguments it uses this repository's redirects.csv (maintained by DCDS).
 #
 # Typical use: the server keeps a copy of this repository, and cron runs
 #   git -C /opt/redirects pull -q --ff-only && /opt/redirects/scripts/install_maps.sh
@@ -26,12 +25,10 @@
 #   SMOKE=1                              set to 0 to skip step 5 (first install,
 #                                        before Apache has been configured)
 #   SMOKE_SERVER=https://127.0.0.1       where to send the test requests
-#   SMOKE_HOST=scholarworks.uni.edu      site name for old-address checks
-#   ARK_HOST=library.uni.edu             site name for ARK checks
-#   SMOKE_ONLY=all                       all | dc | ark (library.uni.edu: ark)
+#   SMOKE_HOST=scholarworks.uni.edu      site name for the checks
 #   SMOKE_INSECURE=0                     1 if 127.0.0.1's certificate can't be verified
 #   MAX_DROP_PCT=20   KEEP=5   FORCE=0
-#   ALLOWED_TARGET_HOSTS, DC_HOSTS, ARK_NAAN, PRESERVICA_ACCESS_HOST
+#   ALLOWED_TARGET_HOSTS, DC_HOSTS
 #                                        read from the repository's settings.env unless
 #                                        already set
 #
@@ -51,15 +48,13 @@ REDIRECT_ROOT="${REDIRECT_ROOT:-/etc/httpd/redirects}"
 SMOKE="${SMOKE:-1}"
 SMOKE_SERVER="${SMOKE_SERVER:-https://127.0.0.1}"
 SMOKE_HOST="${SMOKE_HOST:-scholarworks.uni.edu}"
-ARK_HOST="${ARK_HOST:-library.uni.edu}"
-SMOKE_ONLY="${SMOKE_ONLY:-all}"
 SMOKE_INSECURE="${SMOKE_INSECURE:-0}"
 SMOKE_COUNT="${SMOKE_COUNT:-5}"
 MAX_DROP_PCT="${MAX_DROP_PCT:-20}"
 KEEP="${KEEP:-5}"
 FORCE="${FORCE:-0}"
 TXT2DBM="${TXT2DBM:-$(command -v httxt2dbm || echo /usr/local/apache2/bin/httxt2dbm)}"
-MAPS="dc_paths dc_article ark"
+MAPS="dc_paths dc_article"
 
 log() { echo "$(date +%FT%T) $*"; }
 die() { log "ERROR: $*"; exit 1; }
@@ -78,15 +73,12 @@ trap 'rm -rf "$WORK"' EXIT
 if [ "$#" -gt 0 ]; then
     LISTS=("$@")
 else
-    python3 "$REPO/arks/ark_manifest.py" --manifest "$REPO/arks/arks_manifest.csv" \
-        redirects --out "$WORK/ark_redirects.csv" >/dev/null \
-        || die "couldn't build the ARK redirects from arks/arks_manifest.csv"
-    LISTS=("$REPO/redirects.csv" "$WORK/ark_redirects.csv")
+    LISTS=("$REPO/redirects.csv")
 fi
 for f in "${LISTS[@]}"; do [ -f "$f" ] || die "no redirect list at $f"; done
 mkdir -p "$WORK/maps"
 python3 "$HERE/build_map.py" "${LISTS[@]}" --out "$WORK/maps" --sample 0 >"$WORK/build.log" 2>&1 \
-    || { cat "$WORK/build.log"; die "the redirect lists have errors; nothing installed"; }
+    || { cat "$WORK/build.log"; die "redirects.csv has errors; nothing installed"; }
 
 count() { grep -vc '^#' "$1" 2>/dev/null || true; }
 
@@ -128,9 +120,7 @@ smoke() {
     local k=(); [ "$SMOKE_INSECURE" = 1 ] && k=(-k)
     while IFS=$'\t' read -r role path want_status want_loc; do
         case "$role" in "#"*|"") continue ;; esac
-        [ "$SMOKE_ONLY" = all ] || [ "$SMOKE_ONLY" = "$role" ] || continue
-        local host="$SMOKE_HOST"; [ "$role" = ark ] && host="$ARK_HOST"
-        local got
+        local host="$SMOKE_HOST" got
         got=$(curl -s -o /dev/null --noproxy '*' --max-time 10 ${k[@]+"${k[@]}"} \
               --resolve "$host:$port:$host_ip" -w '%{http_code} %{redirect_url}' \
               "$scheme://$host:$port$path") || got="000 "

@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Turn the redirect lists into the lookup files Apache reads, rejecting bad rows.
 
-Reads one or more CSV files, normally both of:
-  * redirects.csv, maintained by DCDS: old ScholarWorks addresses
-  * the ARK redirects built from arks/arks_manifest.csv
-    (python3 arks/ark_manifest.py redirects --out build/ark_redirects.csv)
-An address or ARK may appear in more than one file only if it points to the same place.
+Reads redirects.csv (maintained by DCDS), or any other lists given. An address may
+appear more than once, in one file or across several, only if it points to the same
+place each time.
 
 Columns:
 
@@ -17,19 +15,16 @@ Columns:
     p_path    where it now lives, e.g.
                 https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-...
               or "410" / "gone" for an item that was withdrawn (answers 410 Gone).
-    ark       optional column: the item's ARK, e.g. ark:/32498/xo2gohohwd, so the ARK
-              resolves to p_path too. Leave the cell (or the whole column) out if none.
-              A row may have an ark and no dc_path (an ARK with no old address).
+Other columns are ignored.
 
 Writes into --out (with --check, only validates and writes nothing):
     dc_paths.txt     "unigreek_images/1 https://..."   any old page address
     dc_article.txt   "unigreek_images/1001 https://..." old file addresses
-    ark.txt          "32498/xo2gohohwd https://..."
     sample.tsv       requests and expected answers, for tests and post-install checks
 
 Usage:
-    python3 scripts/build_map.py --check redirects.csv build/ark_redirects.csv
-    python3 scripts/build_map.py redirects.csv build/ark_redirects.csv --out /path/to/maps
+    python3 scripts/build_map.py --check redirects.csv
+    python3 scripts/build_map.py redirects.csv --out /path/to/maps
 Exit status 1 if any row has an error, so the pipeline fails and nothing is installed.
 """
 
@@ -47,7 +42,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 GONE = "GONE"
 URL_CHARS_RE = re.compile(r"^(?:[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=]|%[0-9A-Fa-f]{2})+$")
 CONTEXT_FILE_RE = re.compile(r"^context/([^/]+)/article/(\d+)(?:/|$)")
-ARK_RE = re.compile(r"^(?:ark:/?)?(\d{5,})/([0-9a-z][0-9a-z./_~-]*)$", re.I)
 
 
 def env_list(name: str, default: str) -> list[str]:
@@ -64,7 +58,6 @@ def parse_args() -> argparse.Namespace:
                          "(default: DC_HOSTS env or scholarworks.uni.edu)")
     ap.add_argument("--allowed-host", action="append",
                     help="hostname(s) allowed in p_path (default: ALLOWED_TARGET_HOSTS env)")
-    ap.add_argument("--naan", default=os.environ.get("ARK_NAAN", "32498"))
     ap.add_argument("--sample", type=int, default=200, help="rows to put in sample.tsv (0 = all)")
     ap.add_argument("--seed", type=int, default=None)
     args = ap.parse_args()
@@ -120,23 +113,13 @@ def new_address(value: str, allowed: list[str]) -> str:
     return v
 
 
-def ark_key(value: str, naan: str) -> str:
-    v = value.strip().replace("-", "")
-    m = ARK_RE.match(v)
-    if not m:
-        raise ValueError(f"ark '{value}' should look like ark:/{naan}/xo2gohohwd")
-    if m.group(1) != naan:
-        raise ValueError(f"ark '{value}' isn't under our NAAN {naan}")
-    return f"{m.group(1)}/{m.group(2).lower().rstrip('/')}"
-
-
 def read_rows(path: Path) -> tuple[list[dict], str]:
     """Rows of one CSV, or an error message about its header."""
     with path.open(newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
         cols = [c.strip().lower() for c in (reader.fieldnames or [])]
-        if "p_path" not in cols or not ({"dc_path", "ark"} & set(cols)):
-            return [], (f"{path}: needs a p_path column and a dc_path or ark column; "
+        if not {"dc_path", "p_path"} <= set(cols):
+            return [], (f"{path}: needs dc_path and p_path columns; "
                         f"found {', '.join(cols) or 'none'}")
         rows = []
         for raw in reader:
@@ -150,10 +133,10 @@ def read_rows(path: Path) -> tuple[list[dict], str]:
 
 def main() -> int:
     args = parse_args()
-    maps: dict[str, dict[str, str]] = {"dc_paths": {}, "dc_article": {}, "ark": {}}
+    maps: dict[str, dict[str, str]] = {"dc_paths": {}, "dc_article": {}}
     where: dict[tuple[str, str], str] = {}
     errors: list[str] = []
-    samples: list[tuple[str, str, str]] = []   # (kind, original value, target)
+    samples: list[tuple[str, str]] = []   # (old address, target)
     total = 0
 
     for path in map(Path, args.csv):
@@ -171,26 +154,21 @@ def main() -> int:
                               "(missing line break), or a comma inside an address")
                 continue
             try:
+                if not row.get("dc_path"):
+                    raise ValueError("dc_path is empty")
                 target = new_address(row.get("p_path", ""), args.allowed)
-                keys = []
-                if row.get("dc_path"):
-                    keys.append(old_address_key(row["dc_path"], args.dc_hosts))
-                if row.get("ark"):
-                    keys.append(("ark", ark_key(row["ark"], args.naan)))
-                if not keys:
-                    raise ValueError("row has neither a dc_path nor an ark")
+                name, key = old_address_key(row["dc_path"], args.dc_hosts)
             except ValueError as exc:
                 errors.append(f"{here}: {exc}")
                 continue
-            for name, key in keys:
-                prev = maps[name].get(key)
-                if prev is not None and prev != target:
-                    errors.append(f"{here}: {key} already points elsewhere ({where[(name, key)]})")
-                    continue
-                if prev is None:
-                    samples.append((name, row["dc_path"] if name != "ark" else key, target))
-                maps[name][key] = target
-                where[(name, key)] = here
+            prev = maps[name].get(key)
+            if prev is not None and prev != target:
+                errors.append(f"{here}: {key} already points elsewhere ({where[(name, key)]})")
+                continue
+            if prev is None:
+                samples.append((row["dc_path"], target))
+            maps[name][key] = target
+            where[(name, key)] = here
 
     counts = ", ".join(f"{n}: {len(m)}" for n, m in maps.items())
     print(f"{' + '.join(args.csv)}: {total} rows ({counts}); {len(errors)} error(s)")
@@ -217,13 +195,10 @@ def main() -> int:
     picked = samples if args.sample == 0 or len(samples) <= args.sample else rng.sample(samples, args.sample)
     with (out / "sample.tsv").open("w", encoding="utf-8") as fh:
         fh.write("# host_role\tpath\texpected_status\texpected_location\n")
-        for kind, original, target in picked:
-            status, loc = ("410", "") if target == GONE else ("302" if kind == "ark" else "301", target)
-            if kind == "ark":
-                fh.write(f"ark\t/ark:/{original}\t{status}\t{loc}\n")
-            else:
-                u = urlparse(original)
-                fh.write(f"dc\t{u.path or '/'}{'?' + u.query if u.query else ''}\t{status}\t{loc}\n")
+        for original, target in picked:
+            status, loc = ("410", "") if target == GONE else ("301", target)
+            u = urlparse(original)
+            fh.write(f"dc\t{u.path or '/'}{'?' + u.query if u.query else ''}\t{status}\t{loc}\n")
     return 0
 
 
