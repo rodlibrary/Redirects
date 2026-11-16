@@ -28,6 +28,9 @@ fi
 export MODULE_DIR TEST_ROOT REPO_ROOT RUN_USER   # read by tests/httpd-test.conf
 
 mkdir -p "$TEST_ROOT/site" && echo "library website" > "$TEST_ROOT/site/index.html"
+# A copy of the "moved" page: Apache's user may not be able to read the checkout
+# (on GitHub's runners /home/runner is private), as on the servers it lives in /etc.
+cp -r "$REPO_ROOT/apache/www" "$TEST_ROOT/www"
 
 if [ "$#" -gt 0 ]; then
     REAL=("$@")
