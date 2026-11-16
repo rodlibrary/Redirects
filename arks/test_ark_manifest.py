@@ -1,10 +1,8 @@
-"""Tests for ark_manifest.py and push_to_gitlab.py, against stand-ins for Preservica
-and GitLab running on this machine. Run with:  python3 -m unittest discover -s arks"""
+"""Tests for ark_manifest.py, against a stand-in for Preservica running on this machine.
+Run with:  python3 -m unittest discover -s arks"""
 
-import base64
 import contextlib
 import csv
-import hashlib
 import io
 import json
 import os
@@ -193,15 +191,40 @@ class Match(unittest.TestCase):
 
     def test_redirects_csv(self):
         run("--manifest", self.manifest, "match", "--summary", "", env=self.env)
-        out_csv = os.path.join(self.dir, "redirects.csv")
+        out_csv = os.path.join(self.dir, "ark_redirects.csv")
         self.assertEqual(run("--manifest", self.manifest, "redirects", "--out", out_csv)[0], 0)
         with open(out_csv, newline="") as fh:
             reader = csv.DictReader(fh)
             self.assertEqual(reader.fieldnames, am.REDIRECT_FIELDS)
             rows = {r["ark"]: r for r in reader}
-        self.assertEqual(rows["ark:/32498/new1"]["status"], "active")
-        self.assertEqual(rows["ark:/32498/miss"]["status"], "unmatched")
-        self.assertIn("ARK found on", rows["ark:/32498/conf"]["notes"])
+        portal = "https://uni.access.preservica.com/portal/en-US"
+        self.assertEqual(rows["ark:/32498/new1"]["p_path"], f"{portal}/asset/sdb%3AIO%7C{U[0]}")
+        self.assertEqual(rows["ark:/32498/folder"]["p_path"], f"{portal}/folder/sdb%3ASO%7C{U[1]}")
+        self.assertEqual(rows["ark:/32498/conf"]["p_path"], f"{portal}/asset/sdb%3AIO%7C{U[9]}",
+                         "a conflict keeps pointing at the existing reference")
+        self.assertEqual(rows["ark:/32498/wdrn"]["p_path"], "410")
+        self.assertNotIn("ark:/32498/miss", rows, "unmatched ARKs have nowhere to go yet")
+        self.assertNotIn("ark:/32498/dupe", rows)
+
+    def test_redirects_with_old_addresses(self):
+        rows = am.read_csv(self.manifest)
+        rows[0].update(dc_path="https://scholarworks.uni.edu/etd/123", dc_article="etd/1124",
+                       preservica_ref=f"IO_{U[0]}")
+        rows[1].update(url="https://digital.library.uni.edu/special")
+        write(self.manifest, am.MANIFEST_FIELDS, [am.finish(am.manifest_row(r)) for r in rows])
+        out_csv = os.path.join(self.dir, "ark_redirects.csv")
+        self.assertEqual(run("--manifest", self.manifest, "redirects", "--out", out_csv)[0], 0)
+        got = am.read_csv(out_csv)
+        new1 = next(r for r in got if r["ark"] == "ark:/32498/new1")
+        self.assertEqual(new1["dc_path"], "https://scholarworks.uni.edu/etd/123")
+        self.assertIn({"dc_path": "https://scholarworks.uni.edu/cgi/viewcontent.cgi?article=1124&context=etd",
+                       "p_path": new1["p_path"], "ark": ""}, got)
+        folder = next(r for r in got if r["ark"] == "ark:/32498/folder")
+        self.assertEqual(folder["p_path"], "https://digital.library.uni.edu/special", "url wins over the reference")
+        # And the Apache side accepts the result as it is.
+        build_map = os.path.join(HERE, "..", "scripts", "build_map.py")
+        p = subprocess.run([sys.executable, build_map, "--check", out_csv], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stdout)
 
     def test_check(self):
         self.assertEqual(run("--manifest", self.manifest, "--master-list", self.master, "check")[0], 0)
@@ -233,69 +256,6 @@ class Minting(unittest.TestCase):
         self.assertEqual(len({r["ark"] for r in rows}), 4, "no ARK issued twice")
         self.assertTrue(all(r["ark"].startswith("ark:/32498/") and r["redirect_status"] == "unmatched" for r in rows))
         self.assertEqual(run("--manifest", manifest, "--master-list", master, "check")[0], 0)
-
-
-class FakeGitLab(BaseHTTPRequestHandler):
-    FILES = {}
-    COMMITS = []
-    TOKEN = "good"
-
-    def log_message(self, *a):
-        pass
-
-    def reply(self, code, obj):
-        body = json.dumps(obj).encode()
-        self.send_response(code)
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        if self.headers.get("PRIVATE-TOKEN") != self.TOKEN:
-            return self.reply(401, {"message": "401 Unauthorized"})
-        path = urllib.parse.unquote(self.path.split("/repository/files/")[1].split("?")[0])
-        if path not in self.FILES:
-            return self.reply(404, {"message": "404 File Not Found"})
-        return self.reply(200, {"content_sha256": hashlib.sha256(self.FILES[path]).hexdigest()})
-
-    def do_POST(self):
-        if self.headers.get("PRIVATE-TOKEN") != self.TOKEN:
-            return self.reply(401, {"message": "401 Unauthorized"})
-        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        for a in body["actions"]:
-            assert (a["action"] == "update") == (a["file_path"] in self.FILES)
-            self.FILES[a["file_path"]] = base64.b64decode(a["content"])
-        self.COMMITS.append(body)
-        return self.reply(201, {"web_url": "https://git.example/commit/1"})
-
-
-class PushToGitLab(unittest.TestCase):
-    def test_push_only_changes(self):
-        srv, url = serve(FakeGitLab)
-        d = tempfile.mkdtemp()
-        a, b = os.path.join(d, "a.csv"), os.path.join(d, "b.csv")
-        for path, text in ((a, "x\n1\n"), (b, "y\n2\n")):
-            with open(path, "w") as fh:
-                fh.write(text)
-        FakeGitLab.FILES = {"b.csv": b"y\n2\n"}
-        FakeGitLab.COMMITS = []
-        env = {**os.environ, "GITLAB_URL": url, "GITLAB_PROJECT": "rod-library/redirects",
-               "GITLAB_BRANCH": "main", "GITLAB_TOKEN": "good"}
-        script = os.path.join(HERE, "push_to_gitlab.py")
-        p = subprocess.run([sys.executable, script, f"{a}:redirects.csv", f"{b}:b.csv"],
-                           env=env, capture_output=True, text=True)
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertEqual([x["action"] for x in FakeGitLab.COMMITS[0]["actions"]], ["create"])
-        self.assertEqual(FakeGitLab.FILES["redirects.csv"], b"x\n1\n")
-        p = subprocess.run([sys.executable, script, f"{a}:redirects.csv", f"{b}:b.csv"],
-                           env=env, capture_output=True, text=True)
-        self.assertIn("Nothing to push", p.stdout)
-        self.assertEqual(len(FakeGitLab.COMMITS), 1, "no empty commit")
-        p = subprocess.run([sys.executable, script, f"{a}:redirects.csv"],
-                           env={**env, "GITLAB_TOKEN": "bad"}, capture_output=True, text=True)
-        self.assertNotEqual(p.returncode, 0)
-        self.assertIn("GITLAB_TOKEN is wrong", p.stderr)
-        srv.shutdown()
-        srv.server_close()
 
 
 if __name__ == "__main__":
