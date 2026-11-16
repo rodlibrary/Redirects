@@ -3,7 +3,7 @@
 
 Reads a TSV of: host <TAB> path <TAB> expected_status <TAB> expected_location
 (# lines skipped; expected_location may be blank). The host column may also be
-"dc" or "ark" (as in build_map.py's sample.tsv), meaning --dc-host or --ark-host.
+"dc" (as in build_map.py's sample.tsv), meaning --dc-host.
 Requests go to --server, with the Host header set from the host column.
 
     python3 tests/check_redirects.py tests/expected.tsv --server http://127.0.0.1:8080
@@ -21,10 +21,9 @@ def main() -> int:
     ap.add_argument("tsv")
     ap.add_argument("--server", default="http://127.0.0.1:8080")
     ap.add_argument("--dc-host", default="scholarworks.uni.edu")
-    ap.add_argument("--ark-host", default="library.uni.edu")
     ap.add_argument("--quiet", action="store_true", help="only print failures")
     args = ap.parse_args()
-    alias = {"dc": args.dc_host, "ark": args.ark_host}
+    alias = {"dc": args.dc_host}
     u = urlparse(args.server)
     passed = failed = 0
     with open(args.tsv, encoding="utf-8") as fh:
