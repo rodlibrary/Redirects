@@ -1,7 +1,8 @@
 # Find each ARK in Preservica's MODS metadata and record the record it belongs to.
 # Runs every Monday and on demand (Actions > Match ARKs in Preservica > Run workflow).
 # When anything changed, it opens a pull request with the updated
-# arks/arks_manifest.csv; merging it pushes the new redirects.csv to GitLab.
+# arks/arks_manifest.csv; once it's merged, the redirect servers pick up the new ARK
+# redirects within 15 minutes.
 name: Match ARKs in Preservica
 
 on:
@@ -60,7 +61,7 @@ jobs:
             echo
             cat match_report.md
             echo
-            echo "Review the changes to \`arks/arks_manifest.csv\` on the **Files changed** tab, mainly the \`preservica_ref\`, \`match\` and \`notes\` columns. Merging pushes the new \`redirects.csv\` to GitLab."
+            echo "Review the changes to \`arks/arks_manifest.csv\` on the **Files changed** tab, mainly the \`preservica_ref\`, \`match\` and \`notes\` columns. Once merged, the redirect servers pick up the new ARK redirects within 15 minutes."
           } > pr_body.md
           .github/scripts/open_pr.sh "match-arks/run-${GITHUB_RUN_NUMBER}" \
             "Match ARKs in Preservica (run ${GITHUB_RUN_NUMBER})" pr_body.md arks/arks_manifest.csv

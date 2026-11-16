@@ -2,7 +2,7 @@
 # It runs arks/generate_arks.py against the master list, so no ARK is ever issued twice,
 # adds the new ARKs to arks/arks_manifest.csv, empties arks/new_arks.csv again, and
 # opens a pull request. The ANVL records for N2T/EZID are in the run's artifact.
-# Merging the pull request pushes the new ARKs to GitLab.
+# Once the pull request is merged, the next Match ARKs run finds their Preservica records.
 name: Mint ARKs
 
 on:
@@ -81,7 +81,7 @@ jobs:
             echo "- \`arks/ark_master_list.csv\` and \`arks/arks_manifest.csv\` have the new ARKs."
             echo "- The per-run \`minted.csv\` and the ANVL records (\`minted.anvl\`) for N2T/EZID are in the run's **minted-arks-${GITHUB_RUN_NUMBER}** artifact: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo
-            echo "Merge this before minting again. Merging pushes the new ARKs to GitLab; the next **Match ARKs in Preservica** run fills in their Preservica records."
+            echo "Merge this before minting again. The next **Match ARKs in Preservica** run fills in their Preservica records, and the redirect servers pick them up once that is merged."
           } > pr_body.md
           .github/scripts/open_pr.sh "mint-arks/run-${GITHUB_RUN_NUMBER}" \
             "Mint ${count} ARK(s) (run ${GITHUB_RUN_NUMBER})" pr_body.md \

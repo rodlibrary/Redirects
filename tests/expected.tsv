@@ -1,0 +1,46 @@
+# host	path	expected_status	expected_location   (tests/fixtures/redirects.csv)
+# Old page addresses: any case, trailing slash, query string ignored
+scholarworks.uni.edu	/unigreek_images/1	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+scholarworks.uni.edu	/unigreek_images/1/	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+scholarworks.uni.edu	/UNIGREEK_IMAGES/1	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+scholarworks.uni.edu	/unigreek_images/1?utm_source=x	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+scholarworks.uni.edu	/unigreek_images/2	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7Cfa398d03-8578-4fed-94b4-4b1a431c60b5
+scholarworks.uni.edu	/pias/vol94/iss4/3	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000a03
+scholarworks.uni.edu	/journal-stem-arts/vol4/iss1/2/	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000b02
+scholarworks.uni.edu	/scua	301	https://digital.library.uni.edu/
+# Collection page, and pages inside it that aren't listed
+scholarworks.uni.edu	/unigreek_images/	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-000000000001
+scholarworks.uni.edu	/unigreek_images/about.html	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-000000000001
+scholarworks.uni.edu	/unigreek_images/index.2.html	301	https://uni.access.preservica.com/portal/en-US/folder/sdb%3ASO%7C0f6c5a10-1111-4a2b-9c3d-000000000001
+# Old file addresses
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1001&context=unigreek_images	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7Cfa398d03-8578-4fed-94b4-4b1a431c60b5
+scholarworks.uni.edu	/cgi/viewcontent.cgi?context=UNIGREEK_IMAGES&article=1001&referer=x	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7Cfa398d03-8578-4fed-94b4-4b1a431c60b5
+scholarworks.uni.edu	/context/unigreek_images/article/1001/viewcontent/photo.jpg	301	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7Cfa398d03-8578-4fed-94b4-4b1a431c60b5
+# Withdrawn (410 Gone)
+scholarworks.uni.edu	/etd/125	410
+scholarworks.uni.edu	/etd/125/	410
+scholarworks.uni.edu	/context/etd/article/1126/viewcontent/thesis.pdf	410
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=1126&context=etd	410
+# Not listed: the moved page with 404
+scholarworks.uni.edu	/unigreek_images/999	404
+scholarworks.uni.edu	/communities.html	404
+scholarworks.uni.edu	/cgi/viewcontent.cgi?article=9999&context=etd	404
+scholarworks.uni.edu	/do/search/?q=water	404
+# Home page
+scholarworks.uni.edu	/	301	https://digital.library.uni.edu/
+# ARKs on library.uni.edu: both forms, hyphens, trailing slash
+library.uni.edu	/ark:/32498/xo2gohohwd	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+library.uni.edu	/ark:32498/xo2gohohwd	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+library.uni.edu	/ark:/32498/xo2-goh-ohwd	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+library.uni.edu	/ark:/32498/xo2gohohwd/	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+library.uni.edu	/ark:/32498/k4n5pq7r	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C5b2f0a10-2222-4a2b-9c3d-000000000b02
+library.uni.edu	/ark:/32498/unknown	404
+# ... and on scholarworks.uni.edu too
+scholarworks.uni.edu	/ark:/32498/xo2gohohwd	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C9dbdd64c-5ab8-4344-ae48-99fc70625610
+# The library website is untouched apart from ARKs under 32498
+library.uni.edu	/ark:/99999/xo2gohohwd	200
+library.uni.edu	/hours	200
+library.uni.edu	/unigreek_images/1	200
+# ARK-only rows from the ARK list (no old address)
+library.uni.edu	/ark:/32498/2bmkm2y5il	302	https://uni.access.preservica.com/portal/en-US/asset/sdb%3AIO%7C11111111-2222-4333-8444-555555555555
+library.uni.edu	/ark:/32498/gone1234	410

@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
 Maintain arks_manifest.csv: every ARK Rod Library has minted, where it points in
-Preservica, and the redirects.csv built from it for the GitLab redirect service.
+Preservica, and the ARK redirects built from it for the Apache redirect servers.
 
 Commands
     sync        Add any ARK in ark_master_list.csv that isn't in the manifest yet.
     add-minted  Add the rows of a generate_arks.py output CSV (a new minting run).
     match       Find each ARK in Preservica's MODS metadata and record the record it
                 belongs to (one search over Preservica, then matched here).
-    redirects   Write redirects.csv from the manifest.
+    redirects   Write the ARK redirects (dc_path, p_path, ark), the format
+                scripts/build_map.py reads alongside DCDS's redirects.csv:
+                  * active rows point to their url, or else to the Preservica portal
+                    page of preservica_ref (PRESERVICA_TARGET_TEMPLATE)
+                  * withdrawn rows answer 410 Gone
+                  * unmatched rows are left out: there's nowhere to send them yet
     check       Check the manifest and master list for problems (used on pull requests).
 
 Matching rules
@@ -24,6 +29,8 @@ Preservica settings come from environment variables (settings.env in the workflo
     PRESERVICA_HOST, PRESERVICA_TENANT, PRESERVICA_USER, PRESERVICA_PASSWORD
     ARK_FIELDS   indexed fields to look for ARKs in (default mods.identifier)
     ARK_NAAN     only ARKs under this NAAN are matched (default 32498)
+    PRESERVICA_ACCESS_HOST, PRESERVICA_TARGET_TEMPLATE
+                 the public portal address redirects point to (defaults below)
 
 Uses only the Python standard library.
 """
@@ -48,7 +55,10 @@ MANIFEST_FIELDS = [
     "dc_path", "dc_article", "preservica_ref", "redirect_status",
     "match", "preservica_title", "checked", "notes",
 ]
-REDIRECT_FIELDS = ["dc_path", "dc_article", "ark", "preservica_ref", "target_url", "status", "notes"]
+REDIRECT_FIELDS = ["dc_path", "p_path", "ark"]
+DEFAULT_ACCESS_HOST = "uni.access.preservica.com"
+DEFAULT_TARGET_TEMPLATE = "https://{access_host}/portal/en-US/{kind}/{sdb}"
+DC_ARTICLE_RE = re.compile(r"^([A-Za-z0-9_-]+)/(\d+)$")   # "context/article", e.g. etd/1124
 STATUSES = ("active", "withdrawn", "unmatched")
 UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 REF_RE = re.compile(rf"^(?:(IO|SO)_)?({UUID})$")
@@ -371,19 +381,35 @@ def cmd_match(args) -> int:
     return 0
 
 
+def portal_url(ref: str) -> str:
+    """The public Preservica portal address for 'IO_<uuid>' or 'SO_<uuid>'."""
+    etype, uuid = ref.split("_", 1)
+    template = os.environ.get("PRESERVICA_TARGET_TEMPLATE") or DEFAULT_TARGET_TEMPLATE
+    return template.format(
+        access_host=os.environ.get("PRESERVICA_ACCESS_HOST") or DEFAULT_ACCESS_HOST,
+        kind="asset" if etype == "IO" else "folder", type=etype, ref=uuid,
+        sdb=urllib.parse.quote(f"sdb:{etype}|{uuid}", safe=""))
+
+
 def cmd_redirects(args) -> int:
-    rows = []
+    rows, skipped = [], 0
     for r in sorted((manifest_row(x) for x in read_csv(args.manifest)), key=sort_key):
         finish(r)
-        rows.append({
-            "dc_path": r["dc_path"], "dc_article": r["dc_article"],
-            "ark": r["ark"], "preservica_ref": r["preservica_ref"],
-            "target_url": r["url"], "status": r["redirect_status"],
-            "notes": r["notes"] if r["match"] in ("conflict", "several records") else "",
-        })
+        if r["redirect_status"] == "withdrawn":
+            target = "410"
+        elif r["redirect_status"] == "active":
+            target = r["url"] or portal_url(r["preservica_ref"])
+        else:
+            skipped += 1
+            continue
+        rows.append({"dc_path": r["dc_path"], "p_path": target, "ark": r["ark"]})
+        m = DC_ARTICLE_RE.match(r["dc_article"])
+        if m:  # the old file address too
+            rows.append({"dc_path": "https://scholarworks.uni.edu/cgi/viewcontent.cgi"
+                                    f"?article={m.group(2)}&context={m.group(1)}",
+                         "p_path": target, "ark": ""})
     write_csv(args.out, rows, REDIRECT_FIELDS)
-    active = sum(r["status"] == "active" for r in rows)
-    print(f"{args.out}: {len(rows)} rows ({active} active)")
+    print(f"{args.out}: {len(rows)} redirects ({skipped} unmatched ARK(s) left out)")
     return 0
 
 
@@ -439,7 +465,7 @@ def main() -> int:
     p.add_argument("--summary", default=os.environ.get("GITHUB_STEP_SUMMARY"),
                    help="also append the report to this Markdown file")
     p = sub.add_parser("redirects")
-    p.add_argument("--out", default="redirects.csv")
+    p.add_argument("--out", default="build/ark_redirects.csv")
     sub.add_parser("check")
     args = ap.parse_args()
     return {"sync": cmd_sync, "add-minted": cmd_add_minted, "match": cmd_match,
